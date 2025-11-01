@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Военный генератор челленджей Arena Breakout</title>
+    <!-- Загрузка Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Дополнительный стиль для кастомного скроллбара в истории */
+        #historyList::-webkit-scrollbar {
+            width: 8px;
+        }
+        #historyList::-webkit-scrollbar-track {
+            background: #2d3748; /* bg-gray-800 */
+            border-radius: 10px;
+        }
+        #historyList::-webkit-scrollbar-thumb {
+            background: #f6ad55; /* text-orange-400 */
+            border-radius: 10px;
+        }
+        #historyList::-webkit-scrollbar-thumb:hover {
+            background: #ed8936; /* text-orange-500 */
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 font-sans p-4 sm:p-8">
+
+    <!-- 
+      Chosen Palette: "Muted Military" - A dark theme using bg-gray-900 (primary background), bg-gray-800 (card backgrounds), text-gray-200 (primary text), with text-yellow-500 and bg-orange-600 as high-contrast military-style accents for buttons and titles.
+      
+      Application Structure Plan: The application is structured as a single-page dashboard. The user flow is centered on a single "Generate" button. 
+      1.  Header: Title.
+      2.  Controls: A row with "Generate" and "Save" buttons.
+      3.  Timer: Prominently displayed below controls.
+      4.  Main Display (`#challengeDisplay`): A responsive 3-column grid that displays the entire challenge as 9 distinct "info cards" (Helmet, Vest, Rig, Weapon, Ammo, Meds, Grenade, Map, Task). This card-based structure is far more scannable and user-friendly than a single text block.
+      5.  History Section: A collapsible or scrollable list below the main display to review past challenges.
+      This structure was chosen because the user needs to see 9 distinct pieces of information at once. A grid of cards is the most effective way to present this "loadout" clearly and modularly, especially on mobile devices (where it stacks to a single column).
+
+      Visualization & Content Choices:
+      -   Report Info: Helmet, Vest, Rig, Weapon, Ammo, Meds, Grenade, Map, Task, Difficulty.
+      -   Goal: Inform the user of their randomized loadout and mission.
+      -   Viz/Presentation: "Info Cards" created with structured HTML/Tailwind. Each card displays a category (e.g., "ШЛЕМ"), an image (placeholder or map), the item's name (e.g., "6Б4Т"), and key stats (e.g., "Тир: 4").
+      -   Interaction: 
+          1.  "Generate" Button Click: Triggers JS to randomly select one item from each data array, *ensuring* ammo matches the weapon. It then builds and injects the 9 HTML cards into the `#challengeDisplay` grid. Starts a 3-minute timer.
+          2.  "Save" Button Click: Serializes the *data* (not the HTML) of the current challenge into a JSON object and saves it to localStorage. It then re-renders the history list.
+      -   Justification: This card-based UI is visually appealing, modular, and scales perfectly from mobile to desktop. Separating the data (JS objects) from the presentation (HTML-generating functions) is a robust software design pattern that makes the app easier to maintain and update. The timer adds the requested pressure.
+      -   Library/Method: Tailwind CSS for layout, Vanilla JS for all logic and DOM manipulation.
+
+      CONFIRMATION: NO SVG graphics used. NO Mermaid JS used.
+    -->
+
+    <div class="container mx-auto max-w-7xl">
+
+        <h1 class="text-3xl sm:text-4xl font-bold text-center text-orange-500 uppercase tracking-wider" style="text-shadow: 2px 2px 4px #000;">
+            🔫 Генератор Челленджей Arena Breakout
+        </h1>
+
+        <div class="flex flex-col sm:flex-row justify-center gap-4 my-6">
+            <button onclick="generateChallenge()" class="bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 px-8 rounded-lg shadow-md transition-all duration-200 transform hover:scale-105 text-lg uppercase">
+                🎯 Новое Задание
+            </button>
+            <button onclick="saveChallenge()" class="bg-gray-700 hover:bg-gray-600 text-gray-200 font-bold py-3 px-8 rounded-lg shadow-md transition-all duration-200 text-lg uppercase">
+                💾 Сохранить
+            </button>
+        </div>
+
+        <div id="timerContainer" class="text-center my-6" style="display: none;">
+            <h2 id="timerLabel" class="text-2xl font-semibold text-yellow-400">
+                Таймер Задания: <span id="timer" class="text-4xl font-mono block sm:inline-block mt-1 sm:mt-0">03:00</span>
+            </h2>
+        </div>
+
+        <audio id="startSound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
+        <audio id="endSound" src="https://actions.google.com/sounds/v1/alarms/laser_shoot.ogg" preload="auto"></audio>
+
+        <!-- Зона отображения челленджа -->
+        <div id="challengeDisplay" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
+            <!-- Карточки будут вставлены сюда -->
+            <div class="bg-gray-800 border border-gray-700 rounded-lg shadow-lg p-6 flex flex-col items-center justify-center text-center min-h-[280px]">
+                <span class="text-5xl mb-4">🔧</span>
+                <h3 class="text-xl font-semibold text-yellow-500">Готов к заданию?</h3>
+                <p class="text-gray-400 mt-2">Нажми кнопку "Новое Задание", чтобы сгенерировать свой следующий рейд.</p>
+            </div>
+        </div>
+
+        <!-- История -->
+        <div id="history" class="mt-12 max-w-5xl mx-auto">
+            <h2 class="text-2xl font-bold text-center text-orange-500 mb-4 uppercase">📝 История Заданий</h2>
+            <div id="historyList" class="max-h-80 overflow-y-auto space-y-3 p-4 bg-gray-800/70 backdrop-blur-sm rounded-lg border border-gray-700">
+                <p class="text-gray-400 text-center">История сохраненных челленджей будет здесь.</p>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // =====================================================================
+        // Глобальные переменные
+        // =====================================================================
+        
+        let timerInterval = null;
+        let currentChallengeData = {};
+        const HISTORY_KEY = 'arenaChallengeHistory_v1';
+
+        // =====================================================================
+        // База Данных (DATA)
+        // =====================================================================
+
+        /**
+         * Генерирует URL для плейсхолдер-изображения
+         * @param {string} text - Текст на плейсхолдере
+         * @param {number} w - Ширина
+         * @param {number} h - Высота
+         * @returns {string} URL
+         */
+        const placeholderImg = (text, w = 150, h = 150) => `https://placehold.co/${w}x${h}/4A5568/E2E8F0?text=${encodeURIComponent(text)}`;
+
+        const data = {
+            helmets: [
+                { name: "ТК-200", tier: 2, img: placeholderImg('ТК-200') },
+                { name: "Ш-9", tier: 3, img: placeholderImg('Ш-9') },
+                { name: "Шлем 6Б4Т", tier: 4, img: placeholderImg('6Б4Т') },
+                { name: "АН-95", tier: 5, img: placeholderImg('АН-95') },
+                { name: "H-Tac", tier: 6, img: placeholderImg('H-Tac') },
+                { name: "Без Шлема", tier: 0, img: placeholderImg('Нет Шлема') }
+            ],
+            vests: [ // Бронежилеты
+                { name: "БН-2 (Тип 3)", tier: 3, img: placeholderImg('БН-2') },
+                { name: "6Б13", tier: 4, img: placeholderImg('6Б13') },
+                { name: "6Б23", tier: 4, img: placeholderImg('6Б23') },
+                { name: "КА-6", tier: 5, img: placeholderImg('КА-6') },
+                { name: "BT-201 (Корунд)", tier: 5, img: placeholderImg('BT-201') },
+                { name: "Коммандос", tier: 6, img: placeholderImg('Коммандос') },
+                { name: "Без Брони", tier: 0, img: placeholderImg('Нет Брони') }
+            ],
+            rigs: [ // Разгрузки
+                { name: "Разгрузка BH-2", slots: "6", img: placeholderImg('BH-2') },
+                { name: "Тактический КА-10", slots: "8", img: placeholderImg('КА-10') },
+                { name: "Разгрузка 'Скаут'", slots: "10", img: placeholderImg('Скаут') },
+                { name: "Тяжелая 'Джаггернаут'", slots: "12", img: placeholderImg('Джаггернаут') },
+                { name: "Нет Разгрузки (Только рюкзак)", slots: "0", img: placeholderImg('Нет Разгрузки') }
+            ],
+            weapons: [
+                {
+                    name: "АК-74Н",
+                    type: "Штурмовая винтовка",
+                    img: placeholderImg('АК-74Н'),
+                    ammo: [
+                        { name: "5.45x39 ПС", tier: 2, img: placeholderImg('5.45 ПС') },
+                        { name: "5.45x39 БП", tier: 4, img: placeholderImg('5.45 БП') },
+                        { name: "5.45x39 БС", tier: 5, img: placeholderImg('5.45 БС') }
+                    ]
+                },
+                {
+                    name: "M4A1",
+                    type: "Штурмовая винтовка",
+                    img: placeholderImg('M4A1'),
+                    ammo: [
+                        { name: "5.56x45 M855", tier: 3, img: placeholderImg('M855') },
+                        { name: "5.56x45 M855A1", tier: 4, img: placeholderImg('M855A1') },
+                        { name: "5.56x45 M995", tier: 5, img: placeholderImg('M995') }
+                    ]
+                },
+                {
+                    name: "FAL",
+                    type: "Штурмовая винтовка",
+                    img: placeholderImg('FAL'),
+                    ammo: [
+                        { name: "7.62x51 M80", tier: 4, img: placeholderImg('M80') },
+                        { name: "7.62x51 M62", tier: 5, img: placeholderImg('M62') },
+                        { name: "7.62x51 M993", tier: 6, img: placeholderImg('M993') }
+                    ]
+                },
+                {
+                    name: "Mosin",
+                    type: "Снайперская винтовка",
+                    img: placeholderImg('Mosin'),
+                    ammo: [
+                        { name: "7.62x54R Т-46", tier: 3, img: placeholderImg('Т-46') },
+                        { name: "7.62x54R ЛПС", tier: 4, img: placeholderImg('ЛПС') },
+                        { name: "7.62x54R СНБ", tier: 6, img: placeholderImg('СНБ') }
+                    ]
+                },
+                {
+                    name: "MP5",
+                    type: "Пистолет-пулемет",
+                    img: placeholderImg('MP5'),
+                    ammo: [
+                        { name: "9x19 PST", tier: 2, img: placeholderImg('9x19 PST') },
+                        { name: "9x19 AP 6.3", tier: 3, img: placeholderImg('AP 6.3') },
+                        { name: "9x19 7N31", tier: 4, img: placeholderImg('7N31') }
+                    ]
+                },
+                {
+                    name: "SKS",
+                    type: "Карабин",
+                    img: placeholderImg('SKS'),
+                    ammo: [
+                        { name: "7.62x39 ПС", tier: 3, img: placeholderImg('7.62 ПС') },
+                        { name: "7.62x39 БП", tier: 5, img: placeholderImg('7.62 БП') }
+                    ]
+                },
+                {
+                    name: "M870",
+                    type: "Дробовик",
+                    img: placeholderImg('M870'),
+                    ammo: [
+                        { name: "12к Дробь #7", tier: 1, img: placeholderImg('Дробь #7') },
+                        { name: "12к 'Флешетта'", tier: 3, img: placeholderImg('Флешетта') },
+                        { name: "12к AP-20", tier: 4, img: placeholderImg('AP-20') }
+                    ]
+                },
+                {
+                    name: "Glock 17",
+                    type: "Пистолет",
+                    img: placeholderImg('Glock 17'),
+                    ammo: [
+                        { name: "9x19 PST", tier: 2, img: placeholderImg('9x19 PST') },
+                        { name: "9x19 AP 6.3", tier: 3, img: placeholderImg('AP 6.3') }
+                    ]
+                }
+            ],
+            meds: [
+                { name: "Простой бинт", type: "Лечение", img: placeholderImg('Бинт') },
+                { name: "Военный бинт", type: "Лечение", img: placeholderImg('Воен. Бинт') },
+                { name: "Аптечка (Станд.)", type: "Лечение", img: placeholderImg('Аптечка') },
+                { name: "Военная аптечка", type: "Лечение", img: placeholderImg('Воен. Аптечка') },
+                { name: "Хирур. набор (Прост.)", type: "Хирургия", img: placeholderImg('Хирург. Прост.') },
+                { name: "Хирур. набор (Станд.)", type: "Хирургия", img: placeholderImg('Хирург. Станд.') },
+                { name: "Обезболивающее (Табл.)", type: "Боль", img: placeholderImg('Таблетки') }
+            ],
+            grenades: [
+                { name: "Осколочная М67", type: "Осколочная", img: placeholderImg('М67') },
+                { name: "Осколочная GHO-2", type: "Осколочная", img: placeholderImg('GHO-2') },
+                { name: "Дымовая М18", type: "Дым", img: placeholderImg('М18') },
+                { name: "Светошумовая M84", type: "Свет", img: placeholderImg('M84') }
+            ],
+            maps: [
+                { name: "Ферма", img: "https://static.wikia.nocookie.net/arena-breakout/images/4/4b/Farm_EN_Map.webp/revision/latest?cb=20240321151656" },
+                { name: "Долина", img: "https://static.wikia.nocookie.net/arena-breakout/images/c/c1/Valley_EN_Map.webp/revision/latest?cb=20240321151745" },
+                { name: "Нортридж", img: "https://static.wikia.nocookie.net/arena-breakout/images/e/e4/Northridge_EN_Map.webp/revision/latest?cb=20240321151727" },
+                { name: "Порт", img: "https://static.wikia.nocookie.net/arena-breakout/images/a/a2/Port_EN_Map.webp/revision/latest?cb=20240321151713" },
+                { name: "Залив Гуаяпос", img: "https://static.wikia.nocookie.net/arena-breakout-infinite/images/f/f0/Guoyapos_Bay_Map.png/revision/latest?cb=20240510164807" },
+                { name: "ТВ Станция", img: "https://static.wikia.nocookie.net/arena-breakout/images/5/52/TV_Station_EN_Map.webp/revision/latest?cb=20240321151737" }
+            ],
+            tasks: [
+                { title: "Чад-Ран ⚔️", desc: "Ваша цель - только игроки. Убейте как минимум 2 оперативников и эвакуируйтесь." },
+                { title: "Крысиный Рейд 🐀", desc: "Не вступать в бой. Ваша цель - собрать лут на 150,000 Коэн и эвакуироваться живым." },
+                { title: "Только одна... ☝️", desc: "Вы можете использовать только то ОДНО оружие, которое вам выпало. Никакого второго слота или пистолета." },
+                { title: "Босс-Хантер 👑", desc: "Найдите и уничтожьте босса на этой карте (или главного миньона). Заберите его лучший лут." },
+                { title: "Исследователь 🗺️", desc: "Посетите 3 'ключевых' (красных) точки на карте и эвакуируйтесь." },
+                { title: "Контрабанда 💼", desc: "Найдите и вынесите 1 'Секретный документ' или любой 'Золотой' предмет." },
+                { title: "Снайпер 🎯", desc: "Убейте 5 врагов (Игроков или Ботов) выстрелами в голову с дистанции более 50 метров." },
+                { title: "Без Брони naked", desc: "Снимите выпавший вам шлем и бронежилет. Пройдите рейд без них (Разгрузка разрешена)." },
+                { title: "Запасливый Хомяк 🎒", desc: "Вы должны эвакуироваться с ПОЛНЫМ рюкзаком и разгрузкой. Каждый слот должен быть занят." },
+                { title: "Мародер ☠️", desc: "Вы можете использовать только снаряжение (оружие, броня), найденное В РЕЙДЕ. Ваше стартовое - только для защиты вначале." }
+            ],
+            difficulty: ["Белая Зона (Обычная)", "Желтая Зона (Событие)", "Красная Зона (Блокада)"]
+        };
+
+        // =====================================================================
+        // Логика Приложения
+        // =====================================================================
+
+        /**
+         * Получает случайный элемент из массива
+         * @param {Array<any>} arr - Массив
+         * @returns {any} Случайный элемент
+         */
+        function getRandomItem(arr) {
+            return arr[Math.floor(Math.random() * arr.length)];
+        }
+
+        /**
+         * Генерирует HTML для одной карточки челленджа
+         * @param {string} title - Категория (напр. "ШЛЕМ")
+         * @param {string} name - Название предмета
+         * @param {string} stat - Доп. стат (напр. "Тир: 4")
+         * @param {string} imgUrl - URL изображения
+         * @param {string} [desc] - Описание (для карт и заданий)
+         * @param {boolean} [isMap=false] - Флаг для стилизации карты
+         */
+        function buildChallengeCard(title, name, stat, imgUrl, desc = '', isMap = false) {
+            const imgClass = isMap 
+                ? 'w-full h-48 object-cover rounded-md mb-3 bg-gray-700' 
+                : 'w-36 h-36 object-contain rounded-md mb-3';
+            
+            const mapErrorFallback = placeholderImg(`${name}?`, 300, 200);
+
+            return `
+                <div class="bg-gray-800 border border-gray-700 rounded-lg shadow-lg p-4 flex flex-col items-center text-center transition-all duration-300 hover:shadow-xl hover:border-yellow-500 min-h-[320px] justify-between">
+                    <div>
+                        <h3 class="text-sm font-semibold text-yellow-500 uppercase tracking-wider mb-2">${title}</h3>
+                        <img src="${imgUrl}" alt="${name}" class="${imgClass}" ${isMap ? `onerror="this.onerror=null; this.src='${mapErrorFallback}'"` : ''}>
+                        <h4 class="text-lg font-bold text-white">${name}</h4>
+                        <p class="text-base text-gray-400">${stat}</p>
+                    </div>
+                    ${desc ? `<p class="text-sm text-gray-300 mt-2">${desc}</p>` : ''}
+                </div>
+            `;
+        }
+
+        /**
+         * Главная функция генерации
+         */
+        function generateChallenge() {
+            // 1. Останавливаем старый таймер
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+
+            // 2. Выбираем снаряжение
+            const helmet = getRandomItem(data.helmets);
+            const vest = getRandomItem(data.vests);
+            const rig = getRandomItem(data.rigs);
+            const weapon = getRandomItem(data.weapons);
+            const ammo = getRandomItem(weapon.ammo); // Ключевая логика: патроны из оружия
+            const med = getRandomItem(data.meds);
+            const grenade = getRandomItem(data.grenades);
+            const map = getRandomItem(data.maps);
+            const task = getRandomItem(data.tasks);
+            const difficulty = getRandomItem(data.difficulty);
+
+            // 3. Сохраняем данные для истории
+            currentChallengeData = { helmet, vest, rig, weapon, ammo, med, grenade, map, task, difficulty };
+            
+            // 4. Генерируем HTML
+            const display = document.getElementById('challengeDisplay');
+            let challengeHTML = '';
+
+            challengeHTML += buildChallengeCard('Шлем', helmet.name, `Тир: ${helmet.tier}`, helmet.img);
+            challengeHTML += buildChallengeCard('Бронежилет', vest.name, `Тир: ${vest.tier}`, vest.img);
+            challengeHTML += buildChallengeCard('Разгрузка', rig.name, `Слотов: ${rig.slots}`, rig.img);
+            challengeHTML += buildChallengeCard('Оружие', weapon.name, weapon.type, weapon.img);
+            challengeHTML += buildChallengeCard('Патроны', ammo.name, `Пробитие (Тир): ${ammo.tier}`, ammo.img);
+            challengeHTML += buildChallengeCard('Медицина', med.name, med.type, med.img);
+            challengeHTML += buildChallengeCard('Гранта', grenade.name, grenade.type, grenade.img);
+            challengeHTML += buildChallengeCard('Карта', map.name, difficulty, map.img, '', true);
+            challengeHTML += buildChallengeCard('Задание', task.title, '', placeholderImg(task.title, 150, 150), task.desc);
+
+            display.innerHTML = challengeHTML;
+
+            // 5. Запускаем таймер
+            startTimer(180); // 180 секунд = 3 мин
+        }
+
+        /**
+         * Запускает таймер
+         * @param {number} seconds - Длительность в секундах
+         */
+        function startTimer(seconds) {
+            const display = document.getElementById('timer');
+            document.getElementById('timerContainer').style.display = 'block';
+
+            try {
+                document.getElementById('startSound').play().catch(e => console.log("Не удалось воспроизвести звук старта"));
+            } catch (e) {
+                console.log("Ошибка звука старта:", e);
+            }
+
+            let remaining = seconds;
+
+            timerInterval = setInterval(() => {
+                remaining--;
+                let min = Math.floor(remaining / 60);
+                let sec = remaining % 60;
+                
+                sec = sec < 10 ? '0' + sec : sec;
+                min = min < 10 ? '0' + min : min;
+
+                display.textContent = `${min}:${sec}`;
+
+                if (remaining <= 0) {
+                    clearInterval(timerInterval);
+                    timerInterval = null;
+                    display.textContent = "00:00";
+                    try {
+                        document.getElementById('endSound').play().catch(e => console.log("Не удалось воспроизвести звук конца"));
+                    } catch (e) {
+                         console.log("Ошибка звука конца:", e);
+                    }
+                    // Вместо alert() можно показать модальное окно или просто выделить таймер красным
+                    display.classList.add('text-red-500');
+                } else {
+                    display.classList.remove('text-red-500');
+                }
+            }, 1000);
+        }
+        
+        /**
+         * Сохраняет текущий челлендж в localStorage
+         */
+        function saveChallenge() {
+            if (!currentChallengeData.weapon) {
+                // Нечего сохранять
+                return;
+            }
+
+            try {
+                const history = JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
+                // Добавляем в начало, чтобы новые были сверху
+                history.unshift(currentChallengeData);
+                // Ограничим историю, например, 50 записями
+                if (history.length > 50) {
+                    history.pop();
+                }
+
+                localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+                loadHistory();
+            } catch (e) {
+                console.error("Ошибка сохранения в localStorage:", e);
+                alert("Не удалось сохранить историю. Возможно, хранилище переполнено.");
+            }
+        }
+
+        /**
+         * Генерирует HTML для одного элемента истории
+         * @param {object} data - Объект данных челленджа
+         * @returns {string} HTML-строка
+         */
+        function buildHistoryHTML(data) {
+            return `
+                <div class="p-3 bg-gray-700 rounded-md shadow text-sm">
+                    <p class="font-bold text-yellow-400">${data.task.title} - ${data.map.name} (${data.difficulty})</p>
+                    <p class="text-gray-300 text-xs truncate">
+                        Снаряжение: ${data.weapon.name} (${data.ammo.name}), 
+                        ${data.helmet.name} (T${data.helmet.tier}), 
+                        ${data.vest.name} (T${data.vest.tier})
+                    </p>
+                </div>
+            `;
+        }
+        
+        /**
+         * Загружает историю из localStorage и отображает ее
+         */
+        function loadHistory() {
+            const historyList = document.getElementById('historyList');
+            try {
+                const history = JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
+
+                if (history.length === 0) {
+                    historyList.innerHTML = '<p class="text-gray-400 text-center">История сохраненных челленджей будет здесь.</p>';
+                    return;
+                }
+
+                historyList.innerHTML = history.map(buildHistoryHTML).join('');
+            } catch (e) {
+                console.error("Ошибка загрузки истории:", e);
+                historyList.innerHTML = '<p class="text-red-500 text-center">Ошибка загрузки истории.</p>';
+                localStorage.removeItem(HISTORY_KEY); // Очищаем сломанные данные
+            }
+        }
+
+        // =====================================================================
+        // Инициализация
+        // =====================================================================
+        
+        // Загружаем историю при первой загрузке страницы
+        document.addEventListener('DOMContentLoaded', loadHistory);
+
+    </script>
+</body>
+</html>
